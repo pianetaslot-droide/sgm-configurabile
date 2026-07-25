@@ -881,3 +881,13 @@ erogazione live eseguita. Pacchettizzato in
   reference/barcode del ticket (scansione non integrata in SGM Connect).
   Prossimo passo: test congiunto su hardware/rete reale di
   `get_cash_levels` via rete.
+- **v1, aggiornamento 2026-07-26 notte (app)**: UI di pagamento reale
+  completata (commit `e5fd440`) — scanner ticket portato da "Game manager"
+  (`TicketScanner.swift`: `VNDetectBarcodesRequest`, stessi symbologies,
+  nessun OCR/AI, stessa regola "nessun barcode = reference nil, mai
+  fallback" dell'incidente 2026-06-07). `CashOperationsView` riscritta:
+  scansiona → sceglie flow → importo manuale (mai auto-letto) → prepara →
+  conferma con polling obbligatorio di `get_payment_status` dopo
+  `commit_payment`. Gated su capabilities + permesso `performCashOps`.
+  Layer di protocollo (§12.1) e UI ora entrambi pronti per un primo test
+  end-to-end reale in dry-run.
