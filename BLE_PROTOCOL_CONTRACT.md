@@ -251,9 +251,9 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
-| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato su BLE (commit `24debc8`), ⚠️ **va in timeout su hardware reale** — vedi §6bis, canale HTTP proposto | 2 |
-| canale HTTP/rete per azioni bulk | ✅ fatto (§6bis CONGELATA — `POST /connect/command` su `RemoteOpsApi`, whitelist `get_cash_levels`/`list_roles` applicata in codice, session_id rinforzato+scadenza 2h), test unitari completi | ❌ da fare ora che è congelata (`RemoteOpsService.swift` esistente da completare) | 2 |
-| `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo, payload piccolo quindi resta su BLE), test unitari completi, dry_run invariato | ❌ da fare ora che è congelata | 2 |
+| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ passa dal canale rete (commit `a9aa918`), ⚠️ non ancora ritestato su hardware reale | 2 |
+| canale HTTP/rete per azioni bulk | ✅ fatto (§6bis CONGELATA — `POST /connect/command` su `RemoteOpsApi`, whitelist `get_cash_levels`/`list_roles` applicata in codice, session_id rinforzato+scadenza 2h), test unitari completi | ✅ implementato (`RemoteOpsService`+`sendPreferringNetwork`, commit `a9aa918`), ⚠️ non ancora testato su rete/hardware reale | 2 |
+| `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo, payload piccolo quindi resta su BLE), test unitari completi, dry_run invariato | ✅ layer di protocollo pronto (`MachinePaymentSession.swift`, commit `a9aa918`), ❌ nessuna UI reale ancora — serve prima decidere come ottenere il reference/barcode del ticket | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
@@ -872,3 +872,12 @@ erogazione live eseguita. Pacchettizzato in
   raggiungibile in rete, non più solo BLE-locale. Test unitari completi,
   nessun test su hardware/rete reale. Pacchettizzato in
   `SGM-Windows-CDM6240N-Management-20260726-v14.zip`.
+- **v1, aggiornamento 2026-07-26 sera (app)**: implementati entrambi lato
+  app (commit `a9aa918`) — canale rete (`RemoteOpsService` riscritto contro
+  `/connect/command`, `MachineConnectionService.sendPreferringNetwork`
+  usato da `get_cash_levels`/`list_roles`) e layer di protocollo pagamento
+  (`MachinePaymentSession.swift`, nuovo file, SOLO BLE). Nessuna UI di
+  pagamento reale ancora: serve prima decidere come l'operatore ottiene il
+  reference/barcode del ticket (scansione non integrata in SGM Connect).
+  Prossimo passo: test congiunto su hardware/rete reale di
+  `get_cash_levels` via rete.
