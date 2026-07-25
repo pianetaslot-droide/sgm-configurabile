@@ -52,3 +52,26 @@ menu, deposito) più nuovi test dedicati al routing adattivo — tutto verde,
 nessuna regressione sugli altri schermi. **Non verificato l'aspetto visivo
 reale su schermo fisico** — solo hit-test/logica, il rendering vero va
 controllato da voi sul touch.
+
+## `get_cash_levels` (Fase 2, prima azione cassa) implementato
+
+Contro la spec §11 del contratto, congelata oggi con due correzioni (vedi
+il changelog del contratto per il dettaglio): `device_id` per-cassetta
+invece del device fisico ripetuto 5 volte, e `nominal_capacity`/
+`low_threshold` documentati come sempre `null` per ora (mai scritti da
+`provision_cdm6240n_sync`) con `is_low` aggiunto come segnale reale
+alternativo per "cassetta in esaurimento". Gate su permesso
+`viewMonitoring` (stesso schema di autenticazione di sessione di Fase 1).
+Sorgente dati: le stesse tabelle `cash_unit_config`/`cash_unit_snapshots`
+già usate da "Stato macchina" sul touch — nessuno schema nuovo.
+
+Test unitari completi (gate di permesso, tutti e 5 gli slot sempre
+presenti, slot mai osservato → null non un finto 0). Non testato su BLE
+reale — serve l'implementazione app per la verifica congiunta.
+Pacchettizzato in `SGM-Windows-CDM6240N-Management-20260726-v12.zip`.
+
+Ho anche visto la nuova proposta §12 (pagamento ticket TITO/Betting,
+rischio ALTO). Non l'ho toccata — resta "NIENTE codice" finché non è
+congelata, come dichiarato nel documento stesso, ed essendo denaro reale
+è comunque una decisione che aspetto da Hu Leo prima di procedere anche
+solo con la revisione tecnica.

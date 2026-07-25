@@ -251,7 +251,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
-| `get_cash_levels` (NUOVO) | ❌ da fare — proposta spec §11, NON congelata | ❌ nessun codice finché non congelata | 2 |
+| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ❌ da fare ora che è congelata | 2 |
 | `prepare_payment`/`commit_payment`/`get_payment_status` (NUOVO) | ❌ da fare — proposta spec §12, NON congelata, rischio ALTO (denaro reale) | ❌ nessun codice finché non congelata | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
@@ -364,50 +364,75 @@ sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
 { "roles": [ ... ] }
 ```
 
-## 11. Fase 2 — PRIMA azione cassa: `get_cash_levels` (PROPOSTA, non ancora congelata)
+## 11. Fase 2 — PRIMA azione cassa: `get_cash_levels` — CONGELATA, implementata lato SGM (2026-07-26)
 
 Hu Leo ha deciso di iniziare Fase 2 dalla lettura livelli (basso rischio,
-sola lettura, nessun movimento di denaro) prima di deposito/dispensa. Come
-per §9: proposta lato app, DA CONGELARE solo dopo conferma/aggiustamento
-lato SGM — nessun codice lato app finché non è congelata.
+sola lettura, nessun movimento di denaro) prima di deposito/dispensa.
+Implementata lato SGM sostanzialmente come proposta, con **due correzioni**
+dopo aver controllato lo schema reale (`local_ledger.py`) — dettagliate
+sotto, il resto della proposta è invariato.
 
 Basata sullo schema locale già esistente e documentato in
 `SGM_WINDOWS_STATUS_HANDOFF_2026-07-24.md` §3.1 (`cash_devices`/
 `cash_unit_config`/`cash_unit_snapshots` in `local_ledger.py`, stessa fonte
-già usata dalla pagina touch "Stato macchina"/`_render_cash_levels_grid`) —
-i nomi dei campi sotto sono un TENTATIVO di rispecchiare quelle tabelle,
-SGM corregga pure se non combaciano esattamente.
+già usata dalla pagina touch "Stato macchina"/`_render_cash_levels_grid`).
 
 - **Autorizzazione**: come le altre letture di monitoraggio, richiede login
-  con permesso `viewMonitoring` (non `manageRoles` — è un permesso già
-  esistente, pensato apposta per questo). Reason se manca: `not_authorized`.
-- **Request payload**: `{}` (nessun parametro, legge tutti i dispositivi
-  cassa configurati su questa macchina).
+  con permesso `viewMonitoring` (non `manageRoles`). Reason se manca:
+  `not_authorized`. Confermato con test: un ruolo con solo `performCashOps`
+  (senza `viewMonitoring`) viene correttamente rifiutato.
+- **Request payload**: `{}` (nessun parametro, legge tutte le 5 cassette
+  configurate del CDM6240N su questa macchina).
 - **Reply payload (ack=true)**:
 ```json
 {
   "devices": [
     {
-      "device_id": "string",
-      "label": "string, opzionale (es. nome cassetto/cassetta)",
+      "device_id": "cdm6240n-primary:1",
+      "label": "string (cassette_code, es. nome cassetto/cassetta)",
       "denom_cent": 1000,
       "current_level": 42,
-      "nominal_capacity": 100,
-      "low_threshold": 10,
+      "nominal_capacity": null,
+      "low_threshold": null,
+      "is_low": false,
       "last_updated": "2026-07-26T14:00:00Z"
     }
   ]
 }
 ```
-- Lato app: questi dati andrebbero mostrati nel tab "Stato" (`HardwareStatusView`,
-  oggi placeholder "non ancora implementato"), non nel tab "Operazioni" —
-  è monitoraggio di sola lettura, non un'azione cassa che muove denaro
-  (quelle restano `CashOperationsView`, ancora tutto da progettare).
+- **Correzione 1 — `device_id` è per-CASSETTA, non per-dispositivo fisico**:
+  `denom_cent`/`current_level`/ecc. sono dati per singolo slot (1-5), non
+  per l'intero CDM6240N — usare il device_id fisico ripetuto identico su
+  tutte e 5 le righe avrebbe reso le righe indistinguibili per l'app. Formato
+  usato: `f"{device_id_fisico}:{slot}"` (es. `cdm6240n-primary:1` ...
+  `cdm6240n-primary:5`).
+- **Correzione 2 — `nominal_capacity`/`low_threshold` saranno SEMPRE `null`
+  per ora**: ho controllato `provision_cdm6240n_sync` — queste due colonne
+  esistono nello schema ma non vengono MAI scritte da nessun percorso di
+  provisioning attuale (non è un bug, è che quel dato non è mai stato
+  raccolto). Per lo stesso principio "mai un finto 0" della proposta, questi
+  campi tornano `null` finché non verrà aggiunto un modo reale di
+  configurarli — non ho inventato un numero. Ho aggiunto invece un campo
+  **NON richiesto dalla proposta ma già disponibile con dati reali**:
+  `is_low` (booleano, dal polling hardware reale, stesso valore che alimenta
+  "Stato macchina" sul touch) — è oggi l'unico segnale affidabile di
+  "cassetta in esaurimento" finché capacity/threshold non vengono
+  provisionati. Consigliato usarlo lato app come indicatore primario invece
+  di derivare una percentuale da `nominal_capacity` (che sarà `null`).
+- Lato app: questi dati andrebbero mostrati nel tab "Stato" (`HardwareStatusView`),
+  non nel tab "Operazioni" — è monitoraggio di sola lettura, non un'azione
+  cassa che muove denaro.
 - **Volutamente fuori scope per questa prima azione**: nessun comando di
-  deposito/dispensa/reset contatori — solo lettura. Se un dispositivo non è
-  configurato o il valore non è mai stato letto (nessuno snapshot), il
-  campo va omesso o `current_level: null` — MAI un finto `0` (stesso
-  principio già seguito per `HardwareDeviceStatus`/`DataFreshness` lato app).
+  deposito/dispensa/reset contatori — solo lettura. Uno slot mai osservato
+  (nessuno snapshot registrato) torna con `current_level: null` e
+  `last_updated: null` — MAI un finto `0`, verificato con test dedicato
+  (slot 3-5 senza snapshot nel test).
+
+Test unitari completi lato SGM: gate `viewMonitoring` (prima/dopo login,
+ruolo senza il permesso rifiutato), 5 slot sempre presenti, slot non
+osservato → null, slot osservato → valori reali incluso `is_low`. Non
+ancora testato end-to-end su BLE reale — serve l'implementazione lato app
+per la verifica congiunta.
 
 ## 12. Pagamento ticket TITO/Betting — PROPOSTA generica (NON congelata, NIENTE codice)
 
@@ -529,3 +554,13 @@ processo "contratto prima del codice" data la sensibilità del dominio.
   mai timeout=fallimento senza `get_payment_status`; autorità anti-doppio-
   pagamento resta la macchina). Nessun codice su nessun lato finché non
   congelata.
+- **v1, aggiornamento 2026-07-26 (SGM/Windows)**: §11 `get_cash_levels`
+  CONGELATA e implementata lato SGM, con due correzioni rispetto alla
+  proposta originale (dettagli in §11): `device_id` ora è per-cassetta
+  (`cdm6240n-primary:1`..`:5`), non il device fisico ripetuto; e
+  `nominal_capacity`/`low_threshold` documentati come SEMPRE `null` oggi
+  (mai popolati da `provision_cdm6240n_sync`) con `is_low` aggiunto come
+  segnale reale alternativo. Test unitari completi (gate viewMonitoring,
+  5 slot sempre presenti, slot non osservato → null mai un finto 0). Non
+  ancora testato su BLE reale — in attesa dell'implementazione app.
+  Pacchettizzato in `SGM-Windows-CDM6240N-Management-20260726-v12.zip`.
