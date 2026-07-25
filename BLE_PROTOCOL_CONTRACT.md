@@ -514,6 +514,73 @@ reale delle nuove macchine, propone eventuali correzioni, POI (solo dopo
 accordo) si scrive codice su entrambi i lati — nessuna eccezione al
 processo "contratto prima del codice" data la sensibilità del dominio.
 
+🔍 **Risposta lato SGM alla struttura §12 (2026-07-26) — SOLO revisione
+tecnica, NIENTE codice scritto, come da regola del documento stesso data
+la sensibilità del dominio.**
+
+**Scoperta principale: gran parte di questo motore esiste già, sul
+service BLE legacy.** `sgm/services/ble_protocol.py` (`BleJsonProtocol`)
+implementa da tempo un pattern quasi identico a quello proposto qui —
+`prepare_operation`/`commit_operation` (più una variante combinata
+`pay_operation`), con un campo `flow` che distingue `tito_payout`/
+`snai_betting_payout`/`snai_fastbet_payout`/`novomatic_manuale_payout`/
+`residual_payout`. Nello specifico copre già, con codice testato (non solo
+teoria):
+
+1. **Anti-doppio-pagamento PRIMA del commit**: `DuplicateReferenceError` +
+   lock sulla `reference` con status `prepared` — se arriva una seconda
+   `prepare` sulla stessa reference, non viene mai eseguita una seconda
+   volta; c'è perfino una conversione automatica a `residual_open` se la
+   reference precedente aveva già mosso denaro parzialmente. Corrisponde
+   esattamente al principio 4 del punto sopra ("la macchina resta
+   l'autorità").
+2. **`get_payment_status` esiste già in sostanza**: ogni operazione ha un
+   `operation_id` durevole in SQLite con uno stato interrogabile
+   (`ledger.get_operation_sync`) — stati come `hardware_in_progress`/
+   `operator_review_required` sono già distinti da un booleano
+   successo/fallimento, in linea con `status: paid|pending|failed` qui
+   proposto. Il pattern "mai timeout=fallimento" (principio 3) è già la
+   filosofia del sistema esistente.
+3. **La regola "reference = barcode, mai OCR" ha già un'eccezione
+   deliberata e ragionata**, non ignorata per sbadataggine: `tito_payout`
+   richiede una reference realmente machine-readable (`_valid_tito_reference`:
+   18/20 cifre numeriche o codice voucher 23 caratteri alfanumerico);
+   `novomatic_manuale_payout` invece ammette ESPLICITAMENTE una reference
+   di origine OCR, ma la sicurezza lì non viene dalla reference stessa —
+   viene dalla corrispondenza esatta dei centesimi nella reference
+   normalizzata PIÙ conferma esplicita dell'operatore. Vale la pena
+   discutere se questa eccezione serve anche al nuovo protocollo generico,
+   non ignorarla.
+4. **L'esecutore hardware reale esiste già**, non è un placeholder:
+   `sgm/services/local_first_tito_real.py` (~1000 righe) implementa
+   `TitoRealLiveExecutor`/`build_customer_payout_adapter` contro
+   l'interfaccia F53/hopper — CDM6240N la implementa già (driver reale
+   `sgm/drivers/grg_cdm6240n.py`, DLL vendor collegata e testata su questa
+   macchina: `devices.f53.model="grg_cdm6240n"`, test riuscito). Include
+   già gestione di esiti ambigui (`CDM6240NAmbiguousDispenseError`, "nessun
+   retry automatico"), cache di stock, marcatura guasti. **Oggi è
+   deliberatamente spento** da due interruttori indipendenti nel config
+   reale di questa macchina (`ble.dry_run=true` E
+   `local_first_tito_live_executor_enabled=false`) — accenderli è una
+   decisione separata dalla forma del protocollo, non ancora presa.
+
+**Raccomandazione SGM**: le nuove azioni di §12 su SGM Connect dovrebbero
+essere un ADATTATORE sottile sopra questo motore esistente (stesso
+`operation_id`/ledger/anti-duplicazione/gestione ambiguità), non una
+reimplementazione parallela — tradurre solo l'involucro (autenticazione a
+sessione/ruolo di SGM Connect con permesso `performCashOps` invece del
+modello a operatore del service legacy) e i nomi (`prepare_payment`/
+`commit_payment` → `prepare_operation`/`pay_operation` con `flow`
+appropriato). Questo vale SE le macchine SGM future useranno hardware
+F53/hopper-compatibile come questa; se l'hardware futuro è realmente
+diverso, l'interfaccia astratta resta comunque il pattern giusto da
+replicare, ma l'esecutore andrebbe scritto ex novo per quell'hardware.
+
+**Domanda aperta per Hu Leo, non tecnica**: questa è una decisione di
+architettura per una feature che muove denaro reale — riuso vs.
+reimplementazione, e quando/se accendere davvero l'erogazione live. La
+segnalo esplicitamente in chat, non la decido da sola.
+
 ## 13. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
@@ -571,3 +638,13 @@ processo "contratto prima del codice" data la sensibilità del dominio.
   `low_threshold` opzionali (mai un finto 0), `is_low` usato come
   indicatore primario di esaurimento. Prossimo passo: test congiunto su
   hardware reale.
+- **v1, aggiornamento 2026-07-26 (SGM/Windows)**: revisione tecnica di §12
+  (NIENTE codice scritto, solo analisi). Scoperta principale: il motore di
+  pagamento locale-first già esiste in gran parte su
+  `sgm/services/ble_protocol.py`/`local_first_tito_real.py` (anti-doppio-
+  pagamento, stati non-booleani, esecutore hardware reale per CDM6240N
+  già scritto ma spento da due interruttori di sicurezza indipendenti).
+  Raccomandazione: le nuove azioni §12 dovrebbero adattare questo motore
+  esistente invece di reimplementarlo. Decisione di architettura (riuso
+  vs. nuovo, quando accendere l'erogazione live) segnalata a Hu Leo in
+  chat, non presa unilateralmente data la sensibilità (denaro reale).
