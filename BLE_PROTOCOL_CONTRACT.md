@@ -15,8 +15,14 @@ scan → connect (col timeout aggiunto in A0.1) → discoverServices → hello �
 read INFO (`configured=true`, `capabilities=["hello"]` letti correttamente).
 Non ancora stress-testato per la ripetibilità 3x richiesta dalla DoD
 formale, ma lo sblocco vero e proprio (il "tubo" che non funzionava mai) è
-risolto. **Lato SGM: puoi procedere con Fase 1** — vedi §9 per la spec
-campi delle azioni ruoli, proposta per il congelamento (A1.1).
+risolto.
+
+🔧 **Fase 1 — lato SGM implementato (2026-07-25 sera, SGM/Windows):** le 5
+azioni ruoli sono scritte contro la spec §9 e passano test unitari completi
+(bootstrap → login → list/upsert/remove → nuovo hello azzera l'auth), ma
+**non ancora testate su macchina reale con un iPhone**. `INFO.capabilities`
+su un build aggiornato ora include tutte e 5 le azioni oltre a `hello`.
+Prossimo passo: sessione di test congiunta contro hardware reale.
 
 ---
 
@@ -90,11 +96,11 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `hello`           | ✅ fatto                 | ✅ fatto, testato*        | 0    |
 | INFO (read)       | ✅ fatto (contract_version+capabilities inclusi) | ✅ da estendere per leggere i 2 nuovi campi | 0 |
 | pairing mode (advertising) | ✅ scritto E **verificato end-to-end** (primo pairing riuscito 2026-07-25, vedi header) | ✅ scan filtrato + fallback + RSSI sort, funziona | 0 |
-| `bootstrap_sala`  | ❌ da fare                | ✅ codice scritto, mai eseguito su macchina reale | 1 |
-| `login`           | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
-| `list_roles`      | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
-| `upsert_role`     | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
-| `remove_role`     | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
+| `bootstrap_sala`  | ✅ fatto (contro spec §9), ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito su macchina reale | 1 |
+| `login`           | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
+| `list_roles`      | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
+| `upsert_role`     | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
+| `remove_role`     | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
 | operazioni cassa  | ❌ placeholder             | ❌ placeholder            | 2    |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
@@ -137,16 +143,13 @@ radio (stop legacy → start Connect sullo stesso slot appena liberato) non è
 stato ancora osservato con un telefono reale in scan — solo con test
 unitari/di importazione. Prossimo passo naturale: W0.4, test congiunto.
 
-## 9. Spec campi ruoli — PROPOSTA lato app per congelamento (A1.1)
+## 9. Spec campi ruoli — CONGELATA, implementata lato SGM (2026-07-25 notte)
 
 Segue il modello confermato da Hu Leo (ruoli sulla macchina, PIN tecnico
 solo per il bootstrap del primo supremo, livelli/permessi liberi — vedi
-`SGM_PIANO_GENERALE_2026-07-25.md` §3). Questa è la spec **già implementata
-e testata (unit test, non su hardware) dal lato app in una precedente
-esplorazione Python** — proposta qui per il congelamento, non ancora
-vincolante finché non la implementi e non aggiungi le azioni a
-`capabilities`. Se qualcosa non funziona per te, proponi una variante, non
-serve rispettarla alla lettera.
+`SGM_PIANO_GENERALE_2026-07-25.md` §3). Implementata lato SGM esattamente
+come proposta qui sotto (nessuna variante necessaria) — vedi matrice §4 e
+`SGM_WINDOWS_STATUS_2026-07-25.md` per lo stato di test.
 
 **Oggetto ruolo (mai include il PIN o il suo hash — solo verso l'app):**
 ```json
@@ -218,3 +221,11 @@ sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
   Aggiunta §9, proposta di spec campi per le azioni ruoli (A1.1), per dare
   al lato SGM tutto il necessario per iniziare Fase 1 senza aspettare un
   altro giro di round-trip.
+- **v1, aggiornamento 2026-07-25 notte (SGM/Windows)**: implementate le 5
+  azioni ruoli lato SGM esattamente contro la spec §9 (nessuna variante).
+  PIN dei ruoli hashati pbkdf2 (stesso schema del PIN tecnico, ora condiviso
+  tramite `services/pin_hash.py`), mai in chiaro, mai sul cloud. `INFO.
+  configured` ora riflette "sala/primo supremo bootstrappati", non più
+  "wizard hardware completato" — sono condizioni diverse. Test unitari
+  completi, nessun test su hardware reale con telefono — vedi
+  `SGM_WINDOWS_STATUS_2026-07-25.md`.
