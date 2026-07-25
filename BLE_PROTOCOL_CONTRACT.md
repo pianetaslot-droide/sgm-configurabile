@@ -251,8 +251,9 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
-| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato (commit `24debc8` in SGMConnect), ⚠️ non ancora testato su hardware reale | 2 |
-| `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo), test unitari completi, dry_run invariato | ❌ da fare ora che è congelata | 2 |
+| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato su BLE (commit `24debc8`), ⚠️ **va in timeout su hardware reale** — vedi §6bis, canale HTTP proposto | 2 |
+| canale HTTP/rete per azioni bulk (NUOVO) | ❌ da valutare — proposta §6bis, NON congelata | ❌ scheletro esistente (`RemoteOpsService.swift`) da completare dopo conferma | 2 |
+| `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo, payload piccolo quindi resta su BLE), test unitari completi, dry_run invariato | ❌ da fare ora che è congelata | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
@@ -271,7 +272,57 @@ BLE reale end-to-end su hardware — quello è tuttora il blocco di Fase 0.
 L'app NON ha un numero di porta cablato. **Lato SGM: implementato** — INFO
 include `remote_host`/`remote_port` quando Tailscale/remote ops è
 configurato sulla macchina (assenti se non configurato). Lato app: da
-leggere.
+leggere (vedi §6bis, ora reso necessario dal problema MTU scoperto oggi).
+
+## 6bis. Rete per azioni a payload grande — PROPOSTA (NON congelata)
+
+**Scoperta 2026-07-26**: `get_cash_levels` (5 cassette) su BLE va sempre in
+timeout — verificato con log diagnostici lato app: richiesta inviata,
+nessuna reply mai arrivata entro 10s. Causa probabile: il payload (~1KB)
+supera l'MTU negoziato (527 byte in test) e le notify BLE NON hanno un
+meccanismo di continuazione automatico a livello di protocollo (a
+differenza delle GATT Read Blob Request) — se `update_value()` scrive un
+valore più lungo dell'MTU in un colpo solo, molto probabilmente viene
+troncato/perso invece di arrivare frammentato (il buffer di riassemblaggio
+lato app esiste ed è corretto SE arrivassero più notify separate, ma i log
+non mostrano alcun frammento arrivato — solo silenzio totale fino al
+timeout). **Richiesta a SGM**: controllare i log server-side per la
+`update_value()` di questa specifica risposta — errore silenzioso? valore
+troncato? nessuna eccezione? Questo conferma o smentisce la causa.
+
+**Decisione di Hu Leo 2026-07-26** (indipendentemente dalla causa esatta
+sopra): le azioni che restituiscono payload potenzialmente grandi
+(`get_cash_levels`, `list_roles`, e future simili) passano al canale
+**rete** (Tailscale, già pianificato in §6) invece che BLE. Le azioni con
+payload piccoli (`hello`, `bootstrap_sala`, `login`, `upsert_role`,
+`remove_role`, `reset_sala`) E le future azioni di pagamento (§12)
+**restano SOLO su BLE** — per il pagamento è una scelta deliberata di
+sicurezza (vicinanza fisica richiesta), per le altre semplicemente non
+serve cambiare canale.
+
+**Proposta di meccanismo** (riusa lo scheletro già scritto lato app,
+`RemoteOpsService.swift`, mai completato finora):
+- Stesso envelope JSON già usato su BLE (`schema_version`/`action`/
+  `session_id`/`seq`/`payload` → `ack`/`action`/`seq`/`status`/`reason`/
+  `payload`) — SGM può riusare la STESSA logica di dispatch delle azioni,
+  esposta anche via HTTP invece che solo sulla characteristic REQUEST.
+- `POST http://{remote_host}:{remote_port}/command`, body = lo stesso
+  request JSON. Nessuna nuova forma di messaggio da imparare.
+- **Continuità di sessione**: `session_id` nel body deve corrispondere a
+  una sessione già autenticata via BLE (`hello`+`login` fatti fisicamente
+  vicino alla macchina) — l'HTTP non apre una sessione propria, la
+  riusa. Reason se `session_id` sconosciuto/scaduto: `session_expired`
+  (nuova reason). Preserva la proprietà "bisogna essere stati fisicamente
+  vicini alla macchina per autenticarsi", solo le letture bulk successive
+  vanno su rete.
+- Se `remote_host`/`remote_port` assenti (Tailscale non configurato su
+  quella macchina) o l'endpoint non risponde: fallback su BLE con lo
+  stesso rischio di timeout di oggi — meglio di niente, ma da segnalare
+  chiaramente in UI, non silenziosamente.
+
+**Non ancora implementato su nessun lato** — SGM valuti fattibilità
+lato server (esporre lo stesso dispatch anche su HTTP) prima di scrivere
+codice app.
 
 ## 7. Pairing mode (W0.1) — stato dettagliato
 
@@ -750,3 +801,14 @@ erogazione live eseguita. Pacchettizzato in
   invariati (questa macchina resta in dry-run). Test unitari completi,
   nessun test su hardware reale, nessuna erogazione live eseguita.
   Pacchettizzato in `SGM-Windows-CDM6240N-Management-20260726-v13.zip`.
+- **v1, aggiornamento 2026-07-26 notte (app)**: `get_cash_levels` testato su
+  hardware reale — va sempre in timeout (log diagnostici: richiesta
+  inviata, nessuna reply entro 10s, nessun frammento osservato). Causa
+  probabile: payload ~1KB oltre l'MTU negoziato (527 byte), le notify BLE
+  non hanno continuazione automatica. Decisione Hu Leo: le azioni a
+  payload potenzialmente grande (`get_cash_levels`, `list_roles`, future
+  simili) passano al canale rete (Tailscale, §6bis, NON congelata) — le
+  azioni a payload piccolo e le future azioni di pagamento restano SOLO su
+  BLE. Riusa lo scheletro `RemoteOpsService.swift` già scritto (stesso
+  envelope JSON di BLE). Nessun codice nuovo finché SGM non conferma
+  fattibilità lato server.
