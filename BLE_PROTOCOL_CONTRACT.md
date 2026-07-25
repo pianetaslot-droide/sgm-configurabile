@@ -251,7 +251,8 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
-| operazioni cassa  | ❌ placeholder             | ❌ placeholder            | 2    |
+| `get_cash_levels` (NUOVO) | ❌ da fare — proposta spec §11, NON congelata | ❌ nessun codice finché non congelata | 2 |
+| altre operazioni cassa (deposito/dispensa) | ❌ placeholder | ❌ placeholder | 2 |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
 BLE reale end-to-end su hardware — quello è tuttora il blocco di Fase 0.
@@ -362,7 +363,52 @@ sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
 { "roles": [ ... ] }
 ```
 
-## 10. Changelog
+## 11. Fase 2 — PRIMA azione cassa: `get_cash_levels` (PROPOSTA, non ancora congelata)
+
+Hu Leo ha deciso di iniziare Fase 2 dalla lettura livelli (basso rischio,
+sola lettura, nessun movimento di denaro) prima di deposito/dispensa. Come
+per §9: proposta lato app, DA CONGELARE solo dopo conferma/aggiustamento
+lato SGM — nessun codice lato app finché non è congelata.
+
+Basata sullo schema locale già esistente e documentato in
+`SGM_WINDOWS_STATUS_HANDOFF_2026-07-24.md` §3.1 (`cash_devices`/
+`cash_unit_config`/`cash_unit_snapshots` in `local_ledger.py`, stessa fonte
+già usata dalla pagina touch "Stato macchina"/`_render_cash_levels_grid`) —
+i nomi dei campi sotto sono un TENTATIVO di rispecchiare quelle tabelle,
+SGM corregga pure se non combaciano esattamente.
+
+- **Autorizzazione**: come le altre letture di monitoraggio, richiede login
+  con permesso `viewMonitoring` (non `manageRoles` — è un permesso già
+  esistente, pensato apposta per questo). Reason se manca: `not_authorized`.
+- **Request payload**: `{}` (nessun parametro, legge tutti i dispositivi
+  cassa configurati su questa macchina).
+- **Reply payload (ack=true)**:
+```json
+{
+  "devices": [
+    {
+      "device_id": "string",
+      "label": "string, opzionale (es. nome cassetto/cassetta)",
+      "denom_cent": 1000,
+      "current_level": 42,
+      "nominal_capacity": 100,
+      "low_threshold": 10,
+      "last_updated": "2026-07-26T14:00:00Z"
+    }
+  ]
+}
+```
+- Lato app: questi dati andrebbero mostrati nel tab "Stato" (`HardwareStatusView`,
+  oggi placeholder "non ancora implementato"), non nel tab "Operazioni" —
+  è monitoraggio di sola lettura, non un'azione cassa che muove denaro
+  (quelle restano `CashOperationsView`, ancora tutto da progettare).
+- **Volutamente fuori scope per questa prima azione**: nessun comando di
+  deposito/dispensa/reset contatori — solo lettura. Se un dispositivo non è
+  configurato o il valore non è mai stato letto (nessuno snapshot), il
+  campo va omesso o `current_level: null` — MAI un finto `0` (stesso
+  principio già seguito per `HardwareDeviceStatus`/`DataFreshness` lato app).
+
+## 12. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
   cartella condivisa. `capabilities`/`contract_version` proposti ma non
@@ -386,3 +432,10 @@ sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
   "wizard hardware completato" — sono condizioni diverse. Test unitari
   completi, nessun test su hardware reale con telefono — vedi
   `SGM_WINDOWS_STATUS_2026-07-25.md`.
+- **v1, aggiornamento 2026-07-26 (app)**: Fase 1 CHIUSA — tutte e 5 le azioni
+  ruoli confermate su hardware reale. Aggiunta §11, proposta (non congelata)
+  per la prima azione di Fase 2: `get_cash_levels`, sola lettura, basata
+  sullo schema esistente `cash_devices`/`cash_unit_config`/
+  `cash_unit_snapshots` già documentato in
+  `SGM_WINDOWS_STATUS_HANDOFF_2026-07-24.md`. Nessun codice lato app finché
+  non è congelata da SGM.
