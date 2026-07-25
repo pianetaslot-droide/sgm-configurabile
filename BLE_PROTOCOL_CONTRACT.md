@@ -32,9 +32,18 @@ end-to-end e confermato successo. Cosa è cambiato:
   più sotto), si ripiega sul login manuale pre-compilato con lo stesso PIN.
   Nessun cambiamento alla fonte di verità: resta sempre la macchina connessa.
 
-**Prossimo passo confermato**: continuare con `list_roles`/`upsert_role`/
-`remove_role` per chiudere davvero la DoD di Fase 1 (bootstrap e login sono
-già confermati funzionanti su hardware reale).
+🏁 **FASE 1 CHIUSA (2026-07-26)**: bootstrap_sala/login/list_roles/
+upsert_role/remove_role TUTTE confermate su hardware reale da Hu Leo
+("测试完成"). DoD di Fase 1 soddisfatta. `reset_sala` resta un miglioramento
+di robustezza in sospeso (non bloccante, vedi sopra) — UI app già pronta,
+lato SGM ancora da fare quando serve.
+
+**Prossimo passo**: Fase 2 (operazioni cassa) — per Hu Leo da confermare se
+procedere ora. Precondizione per iniziare: scrivere il CONTRATTO delle
+azioni cassa (proposta: partire dalla lettura livelli, basso rischio,
+prima di deposito/dispensa) — nessun codice prima che il contratto sia
+concordato tra i due lati, per lo stesso motivo per cui i ruoli sono stati
+congelati in §9 prima di essere implementati.
 
 ✏️ **CORREZIONE (2026-07-26, poco dopo)**: il blocco "PIN del supremo perso"
 descritto sotto era un FALSO ALLARME — causato dal cambio del nome della
@@ -214,9 +223,9 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | pairing mode (advertising) | ✅ scritto E **verificato end-to-end** (primo pairing riuscito 2026-07-25, vedi header) | ✅ scan filtrato + fallback + RSSI sort, funziona | 0 |
 | `bootstrap_sala`  | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `login`           | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
-| `list_roles`      | ✅ fatto, ⚠️ non ancora testato (prossimo passo) | ✅ codice scritto, mai eseguito | 1 |
-| `upsert_role`     | ✅ fatto, ⚠️ non ancora testato (prossimo passo) | ✅ codice scritto, mai eseguito | 1 |
-| `remove_role`     | ✅ fatto, ⚠️ non ancora testato (prossimo passo) | ✅ codice scritto, mai eseguito | 1 |
+| `list_roles`      | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
+| `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
+| `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ❌ da fare — proposta spec sopra | ⚠️ UI trigger in lavorazione | 1 |
 | operazioni cassa  | ❌ placeholder             | ❌ placeholder            | 2    |
 
