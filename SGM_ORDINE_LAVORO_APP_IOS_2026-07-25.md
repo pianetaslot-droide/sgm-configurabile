@@ -18,6 +18,18 @@ Done non è verde su hardware reale.
 
 ## FASE 0 — Sbloccare il pairing (priorità massima)
 
+> **Aggiornamento lato app (Mac-Claude, 2026-07-25 sera, commit `1091bcd`
+> in SGMConnect): A0.1, A0.2, A0.3, A0.4, A0.5 fatti e installati su iPhone
+> fisico ("iPhone di Leo").** Resta aperto A0.6 (test congiunto) — un
+> tentativo di pairing reale con la macchina è stato fatto ma NON ancora
+> concluso con successo (vedi `SGM_CONNECT_APP_STATUS_2026-07-25.md` §8: lo
+> spinner restava bloccato, causa probabile = il bug di A0.1, ora corretto,
+> ma non riverificato contro una macchina reale dopo il fix). **Prossimo
+> passo utile per chiudere Fase 0**: ripetere il test di pairing con la
+> build aggiornata e vedere se ora arriva un errore leggibile invece dello
+> spinner infinito — quell'errore dirà se il problema era davvero A0.1 o
+> se c'è dell'altro (es. lato SGM il service non è ancora advertito, W0.1).
+
 ### A0.1 — Timeout su OGNI step di `connect()` (bug del blocco attuale)
 È la causa probabile già identificata (§8 del doc app): il primo step di
 `MachineConnectionService.connect()` — `central.connect(peripheral,
