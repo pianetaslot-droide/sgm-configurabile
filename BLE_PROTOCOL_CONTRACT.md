@@ -6,8 +6,9 @@ mirror di sola lettura — se serve un cambiamento, si modifica QUI e poi si
 propaga, non il contrario. Vedi `README.md` in questa cartella per il
 processo completo.
 
-`contract_version` attuale: **1** (nessuna macchina reale espone ancora
-`capabilities` — vedi matrice §4, riga INFO).
+`contract_version` attuale: **1**. Lato SGM (Windows) ora espone
+`contract_version`/`capabilities` in INFO — vedi matrice §4. Non ancora
+verificato end-to-end con un telefono reale (pairing bloccato, Fase 0 W0.4).
 
 ---
 
@@ -48,8 +49,7 @@ Service   C09A0000-1B2C-4A9E-8F3D-53474D434E31   ("SGM Connect")
 
 ## 3. INFO — payload (leggibile senza connessione autenticata)
 
-**Campo obbligatorio da aggiungere (non ancora implementato su nessun lato,
-vedi matrice §4):**
+**Lato SGM: implementato.** Lato app: da leggere/consumare (vedi matrice §4).
 
 ```json
 {
@@ -80,7 +80,8 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | Azione            | Lato SGM (Windows)      | Lato App (iOS)          | Fase |
 |-------------------|--------------------------|--------------------------|------|
 | `hello`           | ✅ fatto                 | ✅ fatto, testato*        | 0    |
-| INFO (read)       | ✅ base, ⚠️ da estendere | ✅ da estendere per leggere i 2 nuovi campi | 0 |
+| INFO (read)       | ✅ fatto (contract_version+capabilities inclusi) | ✅ da estendere per leggere i 2 nuovi campi | 0 |
+| pairing mode (advertising) | ✅ scritto, ⚠️ non ancora verificato end-to-end su hardware reale (vedi §7) | n/a (lato app: filtra scan per service UUID, invariato) | 0 |
 | `bootstrap_sala`  | ❌ da fare                | ✅ codice scritto, mai eseguito su macchina reale | 1 |
 | `login`           | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
 | `list_roles`      | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
@@ -101,12 +102,41 @@ BLE reale end-to-end su hardware — quello è tuttora il blocco di Fase 0.
 
 ## 6. Endpoint remoto (Tailscale) — auto-riportato dalla macchina
 
-L'app NON ha un numero di porta cablato. Quando configurato, la macchina
-riporterà `remote_host`/`remote_port` (campo ancora da aggiungere a INFO o a
-una risposta hello estesa, non ancora implementato su nessun lato).
+L'app NON ha un numero di porta cablato. **Lato SGM: implementato** — INFO
+include `remote_host`/`remote_port` quando Tailscale/remote ops è
+configurato sulla macchina (assenti se non configurato). Lato app: da
+leggere.
 
-## 7. Changelog
+## 7. Pairing mode (W0.1) — stato dettagliato
+
+Causa radice confermata su hardware reale (log macchina, riavvii multipli):
+questo adattatore Bluetooth trasmette advertising per **un solo GATT service
+alla volta**. Il service legacy (TITO/Snai, ancora in produzione, non
+ritirabile) tiene lo slot per default.
+
+Implementato lato SGM: un "pairing mode" attivabile dal touch macchina
+(menu admin → BLE (App) → "Modalità pairing →"), che per una finestra di 5
+minuti ferma l'advertising del service legacy e avvia quello del service
+SGM Connect (`C09A0000-...`), poi torna automaticamente al legacy. Le
+connessioni legacy già aperte non si interrompono (l'advertising e la
+connessione GATT sono livelli diversi del protocollo BLE) — solo la
+scopribilità di NUOVI dispositivi legacy è sospesa durante la finestra.
+
+**Non ancora verificato end-to-end**: il meccanismo usa le stesse primitive
+WinRT (`GattServiceProvider.start_advertising`/`stop_advertising`) che bless
+usa internamente, testate singolarmente, ma lo scambio effettivo dello slot
+radio (stop legacy → start Connect sullo stesso slot appena liberato) non è
+stato ancora osservato con un telefono reale in scan — solo con test
+unitari/di importazione. Prossimo passo naturale: W0.4, test congiunto.
+
+## 8. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
   cartella condivisa. `capabilities`/`contract_version` proposti ma non
   ancora implementati su nessun lato — è il primo task di Fase 0.
+- **v1, aggiornamento 2026-07-25 (SGM/Windows)**: implementati W0.1 (pairing
+  mode, non ancora verificato su hardware reale con telefono), W0.2
+  (`contract_version`+`capabilities` in INFO, `capabilities=["hello"]`),
+  W0.3 (log esplicito su lettura INFO / scritture REQUEST per il test
+  congiunto). Nessun cambio alla forma dei messaggi esistenti — solo campi
+  aggiunti, `contract_version` resta 1.
