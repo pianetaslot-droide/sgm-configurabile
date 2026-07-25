@@ -9,6 +9,22 @@ processo completo.
 `contract_version` attuale: **1**. Lato SGM (Windows) espone
 `contract_version`/`capabilities` in INFO — vedi matrice §4.
 
+➡️ **PROSSIMO PASSO per SGM (2026-07-26, dall'app)**: implementare
+`reset_sala` — spec già congelata più sotto ("Proposta di spec — nuova
+azione `reset_sala`", vicino al blocco PIN perso). È l'unico modo per
+sbloccare la ripresa dei test di Fase 1: il supremo creato nel primo
+`bootstrap_sala` riuscito ha un PIN che nessuno ha annotato, `login` fallisce
+sempre ora, e `bootstrap_sala` non si può ripetere. Lato app: UI già pronta
+e gated su `capabilities.contains("reset_sala")` (commit `5b7f6ed` in
+SGMConnect) — appena la aggiungete a `capabilities` sul build, comparirà da
+sola il link "Reset macchina" sulla schermata di login, nessun altro giro
+di coordinamento necessario. Dopo il reset: bootstrap di nuovo con PIN
+CONCORDATI QUI PRIMA di digitarli (proposta: tecnico=`111111` già
+confermato valido, sala="TestSGM", supremo="482100" — aggiornate/sostituite
+pure se preferite altri valori, basta scriverli qui prima di usarli così
+non si perdono più), poi si continua con `login`/`list_roles`/
+`upsert_role`/`remove_role` per chiudere davvero la DoD di Fase 1.
+
 🎉 **Fase 0 — happy path base CONFERMATO su hardware reale (2026-07-25,
 Mac-Claude/app):** primo pairing riuscito end-to-end su iPhone fisico —
 scan → connect (col timeout aggiunto in A0.1) → discoverServices → hello →
