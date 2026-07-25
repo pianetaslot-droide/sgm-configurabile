@@ -252,7 +252,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
 | `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato (commit `24debc8` in SGMConnect), ⚠️ non ancora testato su hardware reale | 2 |
-| `prepare_payment`/`commit_payment`/`get_payment_status` (NUOVO) | ❌ da fare — proposta spec §12, NON congelata, rischio ALTO (denaro reale) | ❌ nessun codice finché non congelata | 2 |
+| `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo), test unitari completi, dry_run invariato | ❌ da fare ora che è congelata | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
@@ -581,6 +581,97 @@ architettura per una feature che muove denaro reale — riuso vs.
 reimplementazione, e quando/se accendere davvero l'erogazione live. La
 segnalo esplicitamente in chat, non la decido da sola.
 
+✅ **Decisione di Hu Leo (2026-07-26): RIUSO confermato** — "复用现有引擎
+因为这套引擎我们研发了很久 而且有很多的实际测试 非常宝贵" (riusare il
+motore esistente perché ci abbiamo lavorato a lungo ed è già testato
+parecchio in pratica — troppo prezioso per rifarlo). Implementato lato
+SGM di conseguenza.
+
+## 12.1 `prepare_payment`/`commit_payment`/`get_payment_status` — CONGELATA, implementata lato SGM (2026-07-26)
+
+**Forma finale, adattatore sottile su `ble_protocol.BleJsonProtocol`** (zero
+logica di business riscritta — solo traduzione envelope/auth):
+
+```json
+// prepare_payment — request payload
+{
+  "operation_id": "<UUID generato dal CLIENT, stesso pattern del service
+                    legacy: idempotente su retry, riusare lo stesso valore
+                    se si ritenta la stessa richiesta>",
+  "flow": "tito_payout",  // o snai_betting_payout/snai_fastbet_payout/
+                          // novomatic_manuale_payout/residual_payout —
+                          // stesso vocabolario del service legacy,
+                          // validazione per-flow INVARIATA (es. tito_payout
+                          // richiede reference machine-readable reale, mai
+                          // OCR; novomatic_manuale ammette OCR ma richiede
+                          // corrispondenza esatta dei centesimi)
+  "reference": "<dipende dal flow>",
+  "amount_cents": 5000,
+  "customer_identity": { "id": "..." }  // opzionale, richiesto SOLO sopra
+                                        // soglia per-flow (es. 500€ per
+                                        // tito_payout) — invariato
+}
+// reply payload (ack=true)
+{ "operation_id": "...", "status": "prepared" }
+```
+Reason se `ack=false`: `not_authorized` (manca permesso `performCashOps`),
+`payout_engine_not_available` (questa macchina ha
+`local_first_ble_enabled=false` — il motore non è wireato), più tutti i
+reason già esistenti del service legacy passati invariati:
+`invalid_payload`, `unsupported_flow`, `invalid_amount`,
+`invalid_reference`, `customer_identity_required`,
+`operator_role_required`, `duplicate_reference` (o, se l'operazione
+duplicata era ancora `prepared` senza denaro mosso, il motore la
+auto-converte a `residual_open` e restituisce
+`prepared_auto_converted_to_residual_open` — comportamento reale già
+testato, non un bug), `active_operation` (un'altra operazione cassa è già
+aperta — un solo movimento contante alla volta su questa macchina).
+
+```json
+// commit_payment — request payload
+{ "operation_id": "..." }
+// reply payload (ack=true) — ATTENZIONE, comportamento reale importante:
+{ "operation_id": "...", "status": "hardware_in_progress" }
+```
+**`commit_payment` risponde SEMPRE `status: "hardware_in_progress"`
+immediatamente**, anche quando (in modalità dry-run, o quando l'hardware
+reale risponde subito) l'operazione internamente ha già raggiunto uno
+stato finale — è il comportamento reale del motore esistente (echo dello
+stato PRIMA della transizione), non qualcosa che questo adattatore ha
+introdotto. **L'app NON deve mai trattare questa reply come definitiva —
+deve sempre chiamare `get_payment_status` per lo stato vero**, esattamente
+il principio 3 della proposta originale ("mai timeout=fallimento senza
+controllare"), qui vale anche per una risposta ricevuta con successo.
+Reason se `ack=false`: `invalid_payload` (operation_id mancante/sconosciuto),
+`live_commit_not_implemented` (solo se live E nessun live_commit_adapter
+configurato — non è il caso di questa macchina oggi, dry_run=true).
+
+```json
+// get_payment_status — request payload
+{ "operation_id": "..." }
+// reply payload (ack=true)
+{ "operation_id": "...", "status": "completed", "result": { "cash_moved": false, "dry_run": true, ... } }
+// "result" presente solo se already noto (assente su operation_id valido
+// ma senza risultato ancora salvato, caso raro)
+```
+Reason se `ack=false`: `not_authorized`, `operation_id_required`,
+`unknown_operation_id`.
+
+**Interruttori di sicurezza — invariati, non toccati da questo lavoro**:
+`ble.dry_run` e `local_first_tito_live_executor_enabled` restano
+esattamente come configurati oggi su ciascuna macchina (su questa:
+entrambi in posizione sicura, `dry_run=true`). I 3 nuovi comandi Connect
+usano la STESSA istanza `BleJsonProtocol` del service legacy — accendere
+l'erogazione live per uno significa accenderla per entrambi, non esistono
+due interruttori separati da tenere sincronizzati.
+
+Test unitari completi (gate `performCashOps`, `payout_protocol` non
+wireato → errore pulito, ciclo prepare→commit→get_status in dry-run,
+reference duplicata da device diverso rifiutata/auto-convertita,
+validazione `get_payment_status`). Nessun test su hardware reale, nessuna
+erogazione live eseguita. Pacchettizzato in
+`SGM-Windows-CDM6240N-Management-20260726-v13.zip`.
+
 ## 13. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
@@ -648,3 +739,14 @@ segnalo esplicitamente in chat, non la decido da sola.
   esistente invece di reimplementarlo. Decisione di architettura (riuso
   vs. nuovo, quando accendere l'erogazione live) segnalata a Hu Leo in
   chat, non presa unilateralmente data la sensibilità (denaro reale).
+- **v1, aggiornamento 2026-07-26 sera (SGM/Windows)**: Hu Leo ha confermato
+  RIUSO. Implementato §12.1 (CONGELATA): `prepare_payment`/
+  `commit_payment`/`get_payment_status` come adattatore sottile su
+  `ble_protocol.BleJsonProtocol` — zero logica di business riscritta.
+  Comportamento reale importante documentato: `commit_payment` risponde
+  sempre `hardware_in_progress` immediatamente, l'app deve sempre
+  interrogare `get_payment_status` per lo stato vero, mai fidarsi della
+  reply di commit come definitiva. Interruttori dry_run/live_commit_adapter
+  invariati (questa macchina resta in dry-run). Test unitari completi,
+  nessun test su hardware reale, nessuna erogazione live eseguita.
+  Pacchettizzato in `SGM-Windows-CDM6240N-Management-20260726-v13.zip`.

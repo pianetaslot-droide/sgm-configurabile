@@ -75,3 +75,23 @@ rischio ALTO). Non l'ho toccata — resta "NIENTE codice" finché non è
 congelata, come dichiarato nel documento stesso, ed essendo denaro reale
 è comunque una decisione che aspetto da Hu Leo prima di procedere anche
 solo con la revisione tecnica.
+
+## `prepare_payment`/`commit_payment`/`get_payment_status` (§12.1) implementati
+
+Dopo revisione tecnica (vedi sopra), Hu Leo ha confermato: riusare il
+motore esistente (`ble_protocol.BleJsonProtocol`/`local_first_tito_real.py`),
+non reimplementare. Fatto esattamente così — i 3 nuovi comandi Connect
+sono un adattatore sottile, zero logica di pagamento riscritta. Gate su
+permesso `performCashOps`. Gli interruttori di sicurezza esistenti
+(`ble.dry_run`, `local_first_tito_live_executor_enabled`) sono condivisi
+con il service legacy e restano nella loro posizione attuale — non ho
+acceso nulla.
+
+Comportamento reale da tenere a mente per l'app: `commit_payment` risponde
+sempre `hardware_in_progress` subito, anche quando l'operazione ha già
+raggiunto uno stato finale internamente — bisogna sempre chiamare
+`get_payment_status` per il risultato vero.
+
+Test unitari completi (dry-run), nessun test hardware reale, nessuna
+erogazione live. Pacchettizzato in
+`SGM-Windows-CDM6240N-Management-20260726-v13.zip`.
