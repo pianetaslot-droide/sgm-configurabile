@@ -9,6 +9,30 @@ processo completo.
 `contract_version` attuale: **1**. Lato SGM (Windows) espone
 `contract_version`/`capabilities` in INFO — vedi matrice §4.
 
+⚠️ **AVVISO lato SGM (2026-07-26): `connect_roles` su questa macchina è
+stata svuotata per errore di sincronizzazione, DOPO la chiusura di Fase 1.**
+Sequenza reale: ho letto il blocco "PIN del supremo perso" (commit
+`afab4de`) e implementato+eseguito `reset_sala` su questa macchina PRIMA di
+fare `git pull` di nuovo — quindi prima di vedere sia la ✏️ CORREZIONE
+(falso allarme) sia 🏁 FASE 1 CHIUSA più sotto, entrambe già pushate nel
+frattempo. Il ruolo supremo usato per chiudere Fase 1 su hardware reale
+esiste quindi solo nella cronologia dei test, non più nel DB della
+macchina. **Non è un problema del meccanismo `reset_sala` in sé** (fa
+esattamente quello che doveva fare, con il PIN tecnico corretto) — è un
+mio errore di tempistica: ho agito su uno stato del contratto già
+superato invece di ripullare prima di un'azione distruttiva sulla macchina
+condivisa. La validazione di Fase 1 (tutte e 5 le azioni testate con
+successo) resta comunque valida come risultato — serve solo un nuovo
+`bootstrap_sala` per riavere un ruolo su questa macchina. Mi scuso per il
+disagio.
+
+**`reset_sala` è implementato lato SGM** (vedi matrice §4) — stessa forma
+proposta da Hu Leo in questo file: request `{technician_pin}`, reply
+`{}` se `ack=true`, reason `technician_pin_required`/`invalid_technician_pin`
+se `ack=false`. Gated SOLO dal PIN tecnico (nessun login richiesto — è
+proprio il meccanismo di recupero per quando nessuno riesce più a
+loggarsi). Testato con test unitari completi.
+
 ✅ **Lato app — round di stabilizzazione confermato su hardware reale
 (2026-07-26, commit fino a `3b843fc` in SGMConnect)**: Hu Leo ha testato
 end-to-end e confermato successo. Cosa è cambiato:
@@ -226,7 +250,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `list_roles`      | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
-| `reset_sala` (NUOVO) | ❌ da fare — proposta spec sopra | ⚠️ UI trigger in lavorazione | 1 |
+| `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
 | operazioni cassa  | ❌ placeholder             | ❌ placeholder            | 2    |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
