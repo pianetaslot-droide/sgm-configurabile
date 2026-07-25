@@ -9,6 +9,33 @@ processo completo.
 `contract_version` attuale: **1**. Lato SGM (Windows) espone
 `contract_version`/`capabilities` in INFO — vedi matrice §4.
 
+✅ **Lato app — round di stabilizzazione confermato su hardware reale
+(2026-07-26, commit fino a `3b843fc` in SGMConnect)**: Hu Leo ha testato
+end-to-end e confermato successo. Cosa è cambiato:
+- 2 crash reali risolti (NavigationLink dentro Menu; EnvironmentObject
+  perso attraverso navigationDestination annidati — fix ispirato alle
+  convenzioni collaudate di "Game manager": sempre `.sheet` + NavigationStack
+  fresca per destinazioni aperte da un Menu, sempre ri-attaccare
+  `.environmentObject(...)` esplicitamente a ogni destinazione/sheet).
+- Race "Bluetooth non pronto" corretta anche in `MachineConnectionService`
+  (già corretta a Fase 0 solo nel discovery) + retry automatico (3 tentativi,
+  backoff 2s) prima di mostrare un errore manuale.
+- Buffer di riassemblaggio per reply BLE oltre l'MTU (pattern portato da
+  `BLEKioskService.notifyReassemblyBuffer` di Game manager).
+- **Nuovo flusso di ingresso** (richiesta Hu Leo): l'app apre su un PIN
+  (`SessionLoginView`) PRIMA di mostrare l'elenco macchine, non dopo aver
+  scelto una macchina. Il PIN vive SOLO in memoria (mai su disco, mai
+  inviato finché non ci si connette a una macchina specifica) ed è un
+  tentativo OPPORTUNISTICO: alla connessione, l'app lo prova una volta in
+  automatico contro il database ruoli di quella macchina; se non combacia
+  (ogni macchina ha oggi un database ruoli indipendente, vedi punto aperto
+  più sotto), si ripiega sul login manuale pre-compilato con lo stesso PIN.
+  Nessun cambiamento alla fonte di verità: resta sempre la macchina connessa.
+
+**Prossimo passo confermato**: continuare con `list_roles`/`upsert_role`/
+`remove_role` per chiudere davvero la DoD di Fase 1 (bootstrap e login sono
+già confermati funzionanti su hardware reale).
+
 ✏️ **CORREZIONE (2026-07-26, poco dopo)**: il blocco "PIN del supremo perso"
 descritto sotto era un FALSO ALLARME — causato dal cambio del nome della
 macchina lato SGM durante i test (l'app si era ricollegata a
