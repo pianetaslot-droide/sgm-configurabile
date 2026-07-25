@@ -6,9 +6,17 @@ mirror di sola lettura — se serve un cambiamento, si modifica QUI e poi si
 propaga, non il contrario. Vedi `README.md` in questa cartella per il
 processo completo.
 
-`contract_version` attuale: **1**. Lato SGM (Windows) ora espone
-`contract_version`/`capabilities` in INFO — vedi matrice §4. Non ancora
-verificato end-to-end con un telefono reale (pairing bloccato, Fase 0 W0.4).
+`contract_version` attuale: **1**. Lato SGM (Windows) espone
+`contract_version`/`capabilities` in INFO — vedi matrice §4.
+
+🎉 **Fase 0 — happy path base CONFERMATO su hardware reale (2026-07-25,
+Mac-Claude/app):** primo pairing riuscito end-to-end su iPhone fisico —
+scan → connect (col timeout aggiunto in A0.1) → discoverServices → hello →
+read INFO (`configured=true`, `capabilities=["hello"]` letti correttamente).
+Non ancora stress-testato per la ripetibilità 3x richiesta dalla DoD
+formale, ma lo sblocco vero e proprio (il "tubo" che non funzionava mai) è
+risolto. **Lato SGM: puoi procedere con Fase 1** — vedi §9 per la spec
+campi delle azioni ruoli, proposta per il congelamento (A1.1).
 
 ---
 
@@ -81,7 +89,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 |-------------------|--------------------------|--------------------------|------|
 | `hello`           | ✅ fatto                 | ✅ fatto, testato*        | 0    |
 | INFO (read)       | ✅ fatto (contract_version+capabilities inclusi) | ✅ da estendere per leggere i 2 nuovi campi | 0 |
-| pairing mode (advertising) | ✅ scritto, ⚠️ non ancora verificato end-to-end su hardware reale (vedi §7) | n/a (lato app: filtra scan per service UUID, invariato) | 0 |
+| pairing mode (advertising) | ✅ scritto E **verificato end-to-end** (primo pairing riuscito 2026-07-25, vedi header) | ✅ scan filtrato + fallback + RSSI sort, funziona | 0 |
 | `bootstrap_sala`  | ❌ da fare                | ✅ codice scritto, mai eseguito su macchina reale | 1 |
 | `login`           | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
 | `list_roles`      | ❌ da fare                | ✅ codice scritto, mai eseguito | 1 |
@@ -129,7 +137,72 @@ radio (stop legacy → start Connect sullo stesso slot appena liberato) non è
 stato ancora osservato con un telefono reale in scan — solo con test
 unitari/di importazione. Prossimo passo naturale: W0.4, test congiunto.
 
-## 8. Changelog
+## 9. Spec campi ruoli — PROPOSTA lato app per congelamento (A1.1)
+
+Segue il modello confermato da Hu Leo (ruoli sulla macchina, PIN tecnico
+solo per il bootstrap del primo supremo, livelli/permessi liberi — vedi
+`SGM_PIANO_GENERALE_2026-07-25.md` §3). Questa è la spec **già implementata
+e testata (unit test, non su hardware) dal lato app in una precedente
+esplorazione Python** — proposta qui per il congelamento, non ancora
+vincolante finché non la implementi e non aggiungi le azioni a
+`capabilities`. Se qualcosa non funziona per te, proponi una variante, non
+serve rispettarla alla lettera.
+
+**Oggetto ruolo (mai include il PIN o il suo hash — solo verso l'app):**
+```json
+{ "id": "string", "name": "string", "level": 0, "permissions": ["manageRoles", "..."] }
+```
+Valori validi per `permissions` (stringhe esatte, case-sensitive — devono
+combaciare 1:1 con `AppPermission.rawValue` lato Swift):
+`manageRoles`, `manageMachineConfig`, `viewMonitoring`, `performCashOps`,
+`pairNewMachine`.
+
+**`bootstrap_sala`** — crea la sala su QUESTA macchina + il suo primo
+supremo (livello 0, TUTTI i permessi). Sicurezza: richiede il PIN TECNICO
+REALE di questa macchina (quello del wizard fisico) nel payload — il
+telefono non lo conosce/salva mai, lo digita l'utente fresco ogni volta.
+```json
+// request payload
+{ "technician_pin": "1234", "sala": "Lido", "supremo_pin": "4821" }
+// reply payload (ack=true)
+{ "role": { "id": "...", "name": "Supremo", "level": 0, "permissions": [tutti e 5] } }
+```
+Reason possibili se `ack=false`: `technician_pin_not_set_on_machine`,
+`invalid_technician_pin`, `sala_required`.
+
+**`login`** — verifica il PIN contro i ruoli della macchina, autentica LA
+SESSIONE BLE corrente (non persiste nulla sul telefono). Un nuovo `hello`
+azzera l'autenticazione della sessione.
+```json
+// request payload
+{ "pin": "4821" }
+// reply payload (ack=true)
+{ "role": { "id": "...", "name": "Supremo", "level": 0, "permissions": [...] } }
+```
+Reason se `ack=false`: `invalid_pin`.
+
+**`list_roles` / `upsert_role` / `remove_role`** — richiedono che la
+sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
+`manageRoles`; altrimenti `ack=false` reason `not_authorized`.
+```json
+// list_roles: request payload {} — reply payload
+{ "roles": [ { "id": "...", "name": "...", "level": 0, "permissions": [...] }, ... ] }
+
+// upsert_role: request payload
+{ "id": "string opzionale (assente = nuovo ruolo)", "name": "Operatore",
+  "level": 3, "permissions": ["viewMonitoring"], "pin": "1111 opzionale" }
+// "pin" obbligatorio se è un ruolo NUOVO (id assente/non esistente),
+// opzionale se esistente (assente = non cambiare il PIN attuale).
+// reply payload
+{ "role": { "id": "...", "name": "Operatore", "level": 3, "permissions": ["viewMonitoring"] } }
+
+// remove_role: request payload
+{ "id": "string" }
+// reply payload (lista aggiornata, comodo per l'app)
+{ "roles": [ ... ] }
+```
+
+## 10. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
   cartella condivisa. `capabilities`/`contract_version` proposti ma non
@@ -140,3 +213,8 @@ unitari/di importazione. Prossimo passo naturale: W0.4, test congiunto.
   W0.3 (log esplicito su lettura INFO / scritture REQUEST per il test
   congiunto). Nessun cambio alla forma dei messaggi esistenti — solo campi
   aggiunti, `contract_version` resta 1.
+- **v1, aggiornamento 2026-07-25 sera (app)**: confermato il primo pairing
+  end-to-end riuscito su iPhone fisico — Fase 0 sostanzialmente sbloccata.
+  Aggiunta §9, proposta di spec campi per le azioni ruoli (A1.1), per dare
+  al lato SGM tutto il necessario per iniziare Fase 1 senza aspettare un
+  altro giro di round-trip.
