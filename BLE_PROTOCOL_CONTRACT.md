@@ -251,7 +251,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `upsert_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
-| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ❌ da fare ora che è congelata | 2 |
+| `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato (commit `24debc8` in SGMConnect), ⚠️ non ancora testato su hardware reale | 2 |
 | `prepare_payment`/`commit_payment`/`get_payment_status` (NUOVO) | ❌ da fare — proposta spec §12, NON congelata, rischio ALTO (denaro reale) | ❌ nessun codice finché non congelata | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
@@ -564,3 +564,10 @@ processo "contratto prima del codice" data la sensibilità del dominio.
   5 slot sempre presenti, slot non osservato → null mai un finto 0). Non
   ancora testato su BLE reale — in attesa dell'implementazione app.
   Pacchettizzato in `SGM-Windows-CDM6240N-Management-20260726-v12.zip`.
+- **v1, aggiornamento 2026-07-26 sera (app)**: implementato `get_cash_levels`
+  lato app esattamente contro §11 (nessuna variante) — nuovo modello
+  `CashDeviceLevel.swift`, mostrato nel tab "Stato" (`HardwareStatusView`),
+  gated su `capabilities`. `current_level`/`nominal_capacity`/
+  `low_threshold` opzionali (mai un finto 0), `is_low` usato come
+  indicatore primario di esaurimento. Prossimo passo: test congiunto su
+  hardware reale.
