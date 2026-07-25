@@ -75,15 +75,32 @@ in chiaro) — quindi `login` fallisce sempre ora (`invalid_pin`), vicolo
 cieco per continuare il test di Fase 1 (`list_roles`/`upsert_role`/
 `remove_role` richiedono un login riuscito con `manageRoles`).
 
-**Richiesta a SGM**: per poter continuare il test in modo pulito e
-ripetibile, servirebbe un modo per **azzerare/svuotare la tabella
-`connect_roles` su questa macchina di test** (o un comando/flag dedicato al
-test, se preferite non farlo manualmente sul DB) così si può rifare
-`bootstrap_sala` con PIN concordati e annotati qui prima di digitarli (es.
-tecnico=`111111` già confermato valido, supremo=un valore che scriviamo
-QUI nel changelog prima di usarlo, per non riperderlo). Ditelo se preferite
-un approccio diverso (es. un comando `reset_sala` dedicato, gated dietro il
-PIN tecnico, invece di toccare il DB a mano).
+**Decisione di Hu Leo (2026-07-26)**: questo non è solo un problema di test
+— in produzione un supremo reale che dimentica il PIN resterebbe
+PERMANENTEMENTE bloccato fuori dalla gestione ruoli della sua sala, senza
+alcun modo di recuperare. Serve un meccanismo di recupero vero, non solo un
+trucco per lo sviluppo. Scelto tra due opzioni (reset mirato di un solo
+ruolo vs reset totale della sala): **reset totale** — più semplice da
+costruire ora, accettando che azzeri tutti i ruoli esistenti (non solo
+quello dimenticato). Un reset mirato per-ruolo resta un possibile
+miglioramento futuro, non bloccante.
+
+**Proposta di spec — nuova azione `reset_sala`** (PROPOSTA lato app, da
+congelare come le altre in §9):
+```json
+// request payload — stessa autorità di bootstrap_sala: PIN tecnico REALE
+// di questa macchina, il telefono non lo salva mai
+{ "technician_pin": "1234" }
+// reply payload (ack=true) — sala cancellata, INFO.configured torna false
+{}
+```
+Reason possibili se `ack=false`: `technician_pin_required` (campo vuoto),
+`invalid_technician_pin`. Effetto: svuota `connect_roles` per QUESTA
+macchina — dopo il reset, `bootstrap_sala` torna disponibile come al primo
+avvio. Lato app: il trigger per questa azione deve essere raggiungibile
+ANCHE quando `configured=true` (oggi l'app mostra solo `login` in quel
+caso) — in lavorazione un punto d'accesso dedicato lato app (link "Problemi
+con il PIN? Reset macchina" sulla schermata di login).
 
 ---
 
@@ -157,11 +174,12 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `hello`           | ✅ fatto                 | ✅ fatto, testato*        | 0    |
 | INFO (read)       | ✅ fatto (contract_version+capabilities inclusi) | ✅ da estendere per leggere i 2 nuovi campi | 0 |
 | pairing mode (advertising) | ✅ scritto E **verificato end-to-end** (primo pairing riuscito 2026-07-25, vedi header) | ✅ scan filtrato + fallback + RSSI sort, funziona | 0 |
-| `bootstrap_sala`  | ✅ fatto (contro spec §9), ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito su macchina reale | 1 |
-| `login`           | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
-| `list_roles`      | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
-| `upsert_role`     | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
-| `remove_role`     | ✅ fatto, ⚠️ non testato su macchina reale | ✅ codice scritto, mai eseguito | 1 |
+| `bootstrap_sala`  | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
+| `login`           | ✅ fatto, ⚠️ non testabile ORA (PIN supremo perso, vedi blocco sopra) | ✅ codice scritto, bloccato sullo stesso motivo | 1 |
+| `list_roles`      | ✅ fatto, ⚠️ non testabile ORA (dipende da login) | ✅ codice scritto, mai eseguito | 1 |
+| `upsert_role`     | ✅ fatto, ⚠️ non testabile ORA (dipende da login) | ✅ codice scritto, mai eseguito | 1 |
+| `remove_role`     | ✅ fatto, ⚠️ non testabile ORA (dipende da login) | ✅ codice scritto, mai eseguito | 1 |
+| `reset_sala` (NUOVO) | ❌ da fare — proposta spec sopra | ⚠️ UI trigger in lavorazione | 1 |
 | operazioni cassa  | ❌ placeholder             | ❌ placeholder            | 2    |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
