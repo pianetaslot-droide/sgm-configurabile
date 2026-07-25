@@ -252,7 +252,8 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
 | `get_cash_levels` (NUOVO) | ❌ da fare — proposta spec §11, NON congelata | ❌ nessun codice finché non congelata | 2 |
-| altre operazioni cassa (deposito/dispensa) | ❌ placeholder | ❌ placeholder | 2 |
+| `prepare_payment`/`commit_payment`/`get_payment_status` (NUOVO) | ❌ da fare — proposta spec §12, NON congelata, rischio ALTO (denaro reale) | ❌ nessun codice finché non congelata | 2 |
+| deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
 `*` "testato" = handshake logico verificato (unit/scripted), NON un pairing
 BLE reale end-to-end su hardware — quello è tuttora il blocco di Fase 0.
@@ -408,7 +409,87 @@ SGM corregga pure se non combaciano esattamente.
   campo va omesso o `current_level: null` — MAI un finto `0` (stesso
   principio già seguito per `HardwareDeviceStatus`/`DataFreshness` lato app).
 
-## 12. Changelog
+## 12. Pagamento ticket TITO/Betting — PROPOSTA generica (NON congelata, NIENTE codice)
+
+⚠️ **Livello di rischio ALTO — denaro reale.** Richiesta Hu Leo 2026-07-26:
+"puoi copiare il vecchio servizio legacy, ignora la macchina VNE Plus
+Change" — cioè riusare il PATTERN già collaudato in produzione da
+`BLEKioskService.swift`/`BLEProtocol.swift` (in "Game manager"), ma
+generalizzato per macchine SGM future non ancora definite nell'hardware.
+**Per questo qui sotto c'è SOLO struttura del protocollo, zero assunzioni
+sui campi business-specifici (fornitore, flow, ecc.) e zero codice** —
+esattamente come i ruoli (§9) e la lettura livelli (§11), ma con uno
+scrutinio ancora più alto perché qui si muovono soldi veri.
+
+**Principi di sicurezza NON negoziabili** (già stabiliti nel progetto,
+vedi memoria `hazard_ocr_code_double_payment` e `feedback_orders_only_from_app`
+lato app — SGM li eredita identici per questo nuovo protocollo):
+1. Il riferimento univoco di un pagamento (`reference`) DEVE essere il
+   codice a barre machine-readable del ticket, MAI un codice letto via
+   OCR/AI — un incidente reale di doppio pagamento (2026-06-07, sull'app
+   esistente) è stato causato esattamente da questo errore.
+2. L'importo è deciso da OCR + conferma esplicita dell'operatore, mai
+   dedotto ciecamente da un'unica fonte.
+3. **Mai assumere che un timeout = fallimento.** Se `commit_payment`
+   scade senza risposta, PRIMA di permettere un retry bisogna interrogare
+   `get_payment_status` per lo stesso `operation_id` — un timeout
+   sull'ack non significa che l'hardware non abbia già erogato/registrato
+   il pagamento (pattern `recoverFinalStatus` di BLEKioskService).
+4. La macchina (non il telefono) resta l'autorità che decide se un
+   `reference` è già stato pagato — stesso principio di "capabilities è
+   l'unica fonte di verità", qui applicato all'anti-doppio-pagamento.
+
+**Azioni proposte** (nomi generici, SGM proponga pure varianti):
+
+```json
+// prepare_payment — valida SENZA muovere denaro: reference già pagato?
+// hardware ha abbastanza contante per erogare l'eventuale resto?
+// request payload
+{ "reference": "<barcode machine-readable>", "amount_cents": 5000 }
+// reply payload (ack=true)
+{ "operation_id": "string", "amount_cents": 5000, "expires_at": "2026-07-26T14:05:00Z" }
+```
+Reason se `ack=false`: `duplicate_reference` (già pagato), `insufficient_funds`,
+`invalid_amount`, `not_authorized` (richiede login con permesso
+`performCashOps`, già esistente nel modello permessi).
+
+```json
+// commit_payment — QUESTO muove denaro/aziona l'hardware
+// request payload
+{ "operation_id": "string" }
+// reply payload — stessa forma tipizzata di PaymentOutcome (BLEKioskService),
+// generalizzata: status/reason SEMPRE presenti, mai un booleano nudo
+{
+  "status": "paid" | "pending" | "failed",
+  "reason": "string|null",
+  "paid_cents": 5000,
+  "is_final": true,
+  "allows_retry": false
+}
+```
+
+```json
+// get_payment_status — DA CHIAMARE SEMPRE dopo un timeout su commit_payment,
+// mai assumere fallimento senza aver controllato
+{ "operation_id": "string" }
+// stessa forma reply di commit_payment
+```
+
+**Volutamente NON specificato qui** (dipende da hardware/business non
+ancora definiti, da NON indovinare):
+- Quali periferiche fisiche erogano il pagamento (hopper/recycler/altro) —
+  è responsabilità di SGM mappare `commit_payment` sull'hardware reale
+  della nuova macchina, qualunque esso sia.
+- Gestione del resto in monete/contanti (fuori scope di questa prima
+  proposta — solo pagamento ticket).
+- Tutto ciò che riguarda deposito/incasso (resta §11 + future proposte).
+
+**Prossimo passo**: SGM valuta se questa struttura si adatta all'hardware
+reale delle nuove macchine, propone eventuali correzioni, POI (solo dopo
+accordo) si scrive codice su entrambi i lati — nessuna eccezione al
+processo "contratto prima del codice" data la sensibilità del dominio.
+
+## 13. Changelog
 
 - **v1** (2026-07-25): stato iniziale documentato in forma canonica in questa
   cartella condivisa. `capabilities`/`contract_version` proposti ma non
@@ -439,3 +520,12 @@ SGM corregga pure se non combaciano esattamente.
   `cash_unit_snapshots` già documentato in
   `SGM_WINDOWS_STATUS_HANDOFF_2026-07-24.md`. Nessun codice lato app finché
   non è congelata da SGM.
+- **v1, aggiornamento 2026-07-26 sera (app)**: Aggiunta §12, proposta
+  generica (NON congelata, rischio ALTO) per pagamento ticket TITO/Betting
+  su hardware SGM futuro — pattern ripreso da `BLEKioskService`/
+  `PaymentOutcome` di "Game manager" ma generalizzato, zero assunzioni
+  sull'hardware di erogazione reale. Principi di sicurezza non negoziabili
+  richiamati esplicitamente (reference = barcode machine-readable mai OCR;
+  mai timeout=fallimento senza `get_payment_status`; autorità anti-doppio-
+  pagamento resta la macchina). Nessun codice su nessun lato finché non
+  congelata.
