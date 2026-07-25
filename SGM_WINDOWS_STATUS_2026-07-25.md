@@ -6,6 +6,34 @@ poi le 5 azioni ruoli di Fase 1 contro la spec congelata in
 `SGM_WINDOWS_STATUS_HANDOFF_2026-07-24.md`, che resta valido per tutto il
 resto (Livelli cassa, incasso, residuo, bug font UI touch).
 
+## Debug del blocco bootstrap_sala (2026-07-25 notte)
+
+Vedi il banner in `BLE_PROTOCOL_CONTRACT.md` per il dettaglio completo.
+Sintesi: verificato con evidenza diretta (hash reale sulla macchina + test
+end-to-end isolato) che il PIN tecnico salvato È `111111` e la verifica
+lato SGM funziona correttamente — il problema non è nello storage/hashing.
+Spedito un fix che distingue "campo PIN vuoto/assente" (nuova reason
+`technician_pin_required`/`pin_required`) da "PIN presente ma sbagliato"
+(`invalid_technician_pin`/`invalid_pin`), così il prossimo tentativo
+dell'app dirà da solo quale dei due scenari è quello reale.
+
+Nota separata, non bloccante: `identity.label`/`identity.sala` sulla
+macchina risultano entrambi `"111111"` (probabile mis-inserimento durante
+il debug) — segnalato per correzione manuale dal touch, non toccato da
+codice.
+
+## Riorganizzazione menu touch (2026-07-25 notte, non richiesta dal piano
+   ma segnalata dall'operatore)
+
+- Rimossi "Configurazione" e "Registro eventi": erano placeholder morti con
+  dati Linux/Raspberry Pi residui (percorsi `/dev/ttyUSB_*`, comandi
+  `systemctl`/`journalctl`) completamente disallineati da questa macchina
+  Windows — non nascosti, eliminati.
+- "Carico cassette" / "Svuotamento" / "Test hardware" / "Test CDM6240N"
+  consolidati sotto un'unica voce "Hardware" nel menu principale invece di
+  essere sparsi — stesso gating per ruolo di prima, cambiata solo la
+  navigazione, nessuna logica toccata.
+
 ## Fase 0 — fatto, confermato funzionante dall'app su hardware reale
 
 W0.1 (pairing mode)/W0.2 (INFO esteso)/W0.3 (log connessione) implementati

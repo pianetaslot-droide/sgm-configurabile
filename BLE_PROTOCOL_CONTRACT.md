@@ -35,17 +35,35 @@ validazione→risposta con reason corretto confermato funzionante end-to-end.
 il successo pieno (creazione sala+supremo), poi `login`/`list_roles`/
 `upsert_role`/`remove_role`.
 
-⚠️ **Blocco attuale (2026-07-25 notte)**: Hu Leo ha riprovato con PIN
-tecnico `111111` (che riteneva corretto) e ha ricevuto di nuovo
-`invalid_technician_pin`. Segnale preciso: la reason NON è
-`technician_pin_not_set_on_machine` (che vorrebbe dire "nessun PIN
-configurato"), quindi la macchina ha SICURAMENTE un PIN tecnico salvato in
-`MachineConfig.technician_pin_hash` — semplicemente non è `111111`. Lato
-app tutto verificato corretto (payload key/value esatti, nessuna
-trasformazione sospetta). **Richiesta al lato SGM**: verificare/riportare
-quale PIN tecnico è realmente salvato su questa macchina (o guidare Hu Leo
-a re-impostarlo a un valore noto tramite il wizard fisico sul touch), così
-si può ripetere il test con un valore sicuramente corretto.
+🔍 **Risposta lato SGM al blocco sopra (2026-07-25, SGM/Windows)**: verificato
+direttamente sulla macchina reale — `technician_pin_hash` esiste in
+`config.json` e **`"111111"` verifica CORRETTAMENTE contro quell'hash**
+(testato chiamando `services/pin_hash.verify_pin()` sullo stesso identico
+hash salvato su disco, risultato `True`; confermato anche end-to-end
+chiamando `bootstrap_sala` in isolamento con quel PIN esatto — successo).
+Il log macchina conferma inoltre che le 3 richieste fallite hanno davvero
+ricevuto `reason="invalid_technician_pin"` (non un bug di logging).
+Conclusione: **il PIN tecnico salvato è realmente `111111`, e la verifica
+lato SGM funziona correttamente contro di esso.** La causa più probabile
+del fallimento è quindi lato richiesta: il campo `technician_pin` nel
+payload molto probabilmente non arrivava valorizzato (vuoto/assente),
+scenario che prima di oggi produceva la STESSA reason di un PIN sbagliato,
+rendendoli indistinguibili dalla reply.
+
+**Fix spedito**: `invalid_technician_pin` ora è emesso SOLO quando un
+valore non-vuoto non corrisponde; un campo vuoto/assente restituisce invece
+`technician_pin_required` (nuova reason, distinta). Stessa distinzione
+aggiunta a `login`/`pin`. Riprovate — se ricevete di nuovo
+`invalid_technician_pin` (non `technician_pin_required`) con lo stesso PIN
+digitato, allora il campo arriva ma il valore non è quello atteso, e serve
+guardare come l'app costruisce il payload; se invece vedete
+`technician_pin_required`, il campo non sta arrivando affatto — guardate lì
+per primo.
+
+Nota a parte, non bloccante: sulla macchina i campi identità
+`label`/`sala` risultano entrambi impostati a `"111111"` (probabilmente un
+mis-inserimento durante i tentativi di debug del PIN) — segnalato
+all'operatore per la correzione dal touch, non lo tocchiamo noi da codice.
 
 ---
 
@@ -194,7 +212,12 @@ telefono non lo conosce/salva mai, lo digita l'utente fresco ogni volta.
 { "role": { "id": "...", "name": "Supremo", "level": 0, "permissions": [tutti e 5] } }
 ```
 Reason possibili se `ack=false`: `technician_pin_not_set_on_machine`,
-`invalid_technician_pin`, `sala_required`.
+`technician_pin_required` (campo vuoto/assente nel payload — aggiunta
+2026-07-25 per distinguerlo da un PIN sbagliato, vedi banner sopra),
+`invalid_technician_pin` (valore presente ma non corrisponde),
+`sala_required`, `already_bootstrapped` (bootstrap già eseguito su questa
+macchina — è una singola "prima volta" per macchina, ruoli aggiuntivi
+passano da `upsert_role`), `invalid_supremo_pin` (meno di 4 cifre).
 
 **`login`** — verifica il PIN contro i ruoli della macchina, autentica LA
 SESSIONE BLE corrente (non persiste nulla sul telefono). Un nuovo `hello`
@@ -205,7 +228,9 @@ azzera l'autenticazione della sessione.
 // reply payload (ack=true)
 { "role": { "id": "...", "name": "Supremo", "level": 0, "permissions": [...] } }
 ```
-Reason se `ack=false`: `invalid_pin`.
+Reason se `ack=false`: `invalid_session`, `pin_required` (campo vuoto/assente
+— aggiunta 2026-07-25, stessa distinzione di `bootstrap_sala`), `invalid_pin`
+(valore presente ma non corrisponde a nessun ruolo).
 
 **`list_roles` / `upsert_role` / `remove_role`** — richiedono che la
 sessione corrente abbia già fatto `login` con un ruolo che ha il permesso
