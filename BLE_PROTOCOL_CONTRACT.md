@@ -252,7 +252,7 @@ Regola: `capabilities` in INFO deve sempre riflettere la colonna "Lato SGM".
 | `remove_role`     | ✅ fatto E **confermato su hardware reale** (2026-07-26) | ✅ confermato su hardware reale | 1 |
 | `reset_sala` (NUOVO) | ✅ fatto (stessa spec proposta qui), ⚠️ eseguito su questa macchina il 2026-07-26 svuotando il ruolo di test — vedi avviso in cima al file | ⚠️ UI trigger in lavorazione | 1 |
 | `get_cash_levels` | ✅ fatto (spec §11, CONGELATA — vedi correzioni), test unitari completi | ✅ implementato su BLE (commit `24debc8`), ⚠️ **va in timeout su hardware reale** — vedi §6bis, canale HTTP proposto | 2 |
-| canale HTTP/rete per azioni bulk (NUOVO) | ❌ da valutare — proposta §6bis, NON congelata | ❌ scheletro esistente (`RemoteOpsService.swift`) da completare dopo conferma | 2 |
+| canale HTTP/rete per azioni bulk | ✅ fatto (§6bis CONGELATA — `POST /connect/command` su `RemoteOpsApi`, whitelist `get_cash_levels`/`list_roles` applicata in codice, session_id rinforzato+scadenza 2h), test unitari completi | ❌ da fare ora che è congelata (`RemoteOpsService.swift` esistente da completare) | 2 |
 | `prepare_payment`/`commit_payment`/`get_payment_status` | ✅ fatto (spec §12.1, CONGELATA — adattatore su motore esistente, riuso confermato da Hu Leo, payload piccolo quindi resta su BLE), test unitari completi, dry_run invariato | ❌ da fare ora che è congelata | 2 |
 | deposito/incasso | ❌ placeholder | ❌ placeholder | 2 |
 
@@ -323,6 +323,54 @@ serve cambiare canale.
 **Non ancora implementato su nessun lato** — SGM valuti fattibilità
 lato server (esporre lo stesso dispatch anche su HTTP) prima di scrivere
 codice app.
+
+✅ **CONGELATA, implementata lato SGM (2026-07-26)** — Hu Leo ha confermato
+"走网络通道" (procedere col canale rete). Forma finale, sostanzialmente
+come proposto, con l'aggiunta di due rinforzi di sicurezza resi necessari
+dal fatto che `session_id` è ora raggiungibile in rete (prima era solo
+BLE-locale):
+
+- `POST http://{remote_host}:{remote_port}/connect/command` — stesso
+  server `RemoteOpsApi` già esistente (stessa porta già riportata in
+  INFO, nessuna nuova porta), stesso envelope JSON di BLE. Body = request
+  completa (`schema_version`/`action`/`session_id`/`seq`/`payload`),
+  risposta = reply completa (`ack`/`action`/`seq`/`status`/`reason`/
+  `payload`), sempre HTTP 200 quando il dispatch avviene (l'esito vero è
+  nel campo `ack`, esattamente come su BLE) — eccezioni: 400 JSON
+  malformato, 503 se questa macchina non ha il motore Connect wireato
+  (`local_first_ble_enabled=false`).
+- **Auth = continuità di session_id, NON il bearer token di RemoteOpsApi**
+  (l'app non ha modo di conoscere quel token) — invariato rispetto alla
+  proposta. Un `session_id` sconosciuto/revocato → `invalid_session`.
+- **Whitelist, non blacklist**: SOLO `get_cash_levels`/`list_roles` sono
+  raggiungibili su questo canale — enfatizzato: è applicato IN CODICE
+  dentro `ConnectBleProtocol.handle_json_sync(transport="network")`, non
+  solo lato server HTTP — qualunque altra azione (incluse le 3 di
+  pagamento appena congelate in §12.1) restituisce `ack=false,
+  reason="action_not_allowed_over_network"` anche se la sessione ha già
+  fatto login con tutti i permessi. Aggiungere una nuova azione futura
+  NON la rende raggiungibile qui automaticamente — va aggiunta
+  esplicitamente a `NETWORK_ALLOWED_ACTIONS`.
+- **Due rinforzi non nella proposta originale, aggiunti perché
+  necessari** ora che `session_id` è un bearer credential raggiungibile
+  in rete, non solo un handle BLE-locale:
+  1. Entropia di `session_id` alzata da 32 a 128 bit (era pensata solo
+     per un canale che richiedeva vicinanza fisica per essere
+     intercettato/indovinato; in rete quel presupposto non vale più).
+  2. **Nuova reason `session_expired`**: una sessione idle da più di 2h
+     (stessa convenzione TTL del service legacy) viene rifiutata anche se
+     non esplicitamente revocata — altrimenti un `session_id` catturato
+     una volta resterebbe valido all'infinito su questo canale. Ogni
+     richiesta riuscita rinfresca il timer (comportamento normale di
+     sessione, non richiede logica aggiuntiva lato app).
+- Fallback su BLE se `remote_host`/`remote_port` assenti: comportamento
+  lato app, non lato SGM — invariato rispetto alla proposta.
+
+Test unitari completi (entropia, scadenza/rinfresco, whitelist enumerata
+azione per azione incluse tutte e 3 le azioni di pagamento, route HTTP:
+successo/rifiuto whitelist/JSON malformato/connect_protocol assente).
+Nessun test su BLE/Tailscale reale. Pacchettizzato in
+`SGM-Windows-CDM6240N-Management-20260726-v14.zip`.
 
 ## 7. Pairing mode (W0.1) — stato dettagliato
 
@@ -812,3 +860,15 @@ erogazione live eseguita. Pacchettizzato in
   BLE. Riusa lo scheletro `RemoteOpsService.swift` già scritto (stesso
   envelope JSON di BLE). Nessun codice nuovo finché SGM non conferma
   fattibilità lato server.
+- **v1, aggiornamento 2026-07-26 notte (SGM/Windows)**: Hu Leo ha
+  confermato "走网络通道". Implementato §6bis (CONGELATA): nuova route
+  `POST /connect/command` sullo stesso `RemoteOpsApi`/porta già in INFO,
+  whitelist `get_cash_levels`/`list_roles` applicata dentro
+  `ConnectBleProtocol` stesso (non solo lato HTTP) — qualunque altra
+  azione, pagamenti inclusi, resta rifiutata su questo canale anche a
+  sessione autenticata. Aggiunti due rinforzi non nella proposta
+  originale: entropia `session_id` 32→128 bit e scadenza idle 2h (nuova
+  reason `session_expired`) — necessari solo ora che `session_id` è
+  raggiungibile in rete, non più solo BLE-locale. Test unitari completi,
+  nessun test su hardware/rete reale. Pacchettizzato in
+  `SGM-Windows-CDM6240N-Management-20260726-v14.zip`.

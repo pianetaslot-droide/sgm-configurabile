@@ -95,3 +95,21 @@ raggiunto uno stato finale internamente — bisogna sempre chiamare
 Test unitari completi (dry-run), nessun test hardware reale, nessuna
 erogazione live. Pacchettizzato in
 `SGM-Windows-CDM6240N-Management-20260726-v13.zip`.
+
+## Canale rete §6bis implementato (get_cash_levels timeout su BLE)
+
+L'app ha trovato che `get_cash_levels` va sempre in timeout su hardware
+reale (payload oltre l'MTU BLE). Hu Leo ha confermato: passare al canale
+Tailscale già esistente (`RemoteOpsApi`, stessa porta già in INFO). Fatto:
+nuova route `POST /connect/command`, whitelist SOLO `get_cash_levels`/
+`list_roles` applicata dentro `ConnectBleProtocol` stesso (non aggirabile
+lato HTTP), auth = continuità di `session_id` già autenticato via BLE (non
+il token di RemoteOpsApi, che l'app non conosce).
+
+Dato che `session_id` ora è raggiungibile in rete e non solo su BLE, ho
+anche rinforzato: entropia 32→128 bit, scadenza idle di 2h (nuova reason
+`session_expired`, rinfrescata ad ogni richiesta riuscita). Non erano
+necessari prima (il canale era solo BLE-locale).
+
+Test unitari completi, nessun test su hardware/rete reale. Pacchettizzato
+in `SGM-Windows-CDM6240N-Management-20260726-v14.zip`.
