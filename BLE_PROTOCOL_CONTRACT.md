@@ -65,6 +65,26 @@ Nota a parte, non bloccante: sulla macchina i campi identità
 mis-inserimento durante i tentativi di debug del PIN) — segnalato
 all'operatore per la correzione dal touch, non lo tocchiamo noi da codice.
 
+🔒 **Nuovo blocco (2026-07-26): `bootstrap_sala` è riuscito almeno una
+volta** (Hu Leo ha visto la Dashboard reale) — ma essendo "una sola prima
+volta per macchina" (vedi `SGM_WINDOWS_STATUS_2026-07-25.md`), la macchina
+ora ha PERMANENTEMENTE `configured=true` e mostra sempre `login`, mai più
+`bootstrap_sala`. Il PIN del primo supremo creato in quel bootstrap **non è
+stato annotato da nessuna parte** (è hashato sulla macchina, irrecuperabile
+in chiaro) — quindi `login` fallisce sempre ora (`invalid_pin`), vicolo
+cieco per continuare il test di Fase 1 (`list_roles`/`upsert_role`/
+`remove_role` richiedono un login riuscito con `manageRoles`).
+
+**Richiesta a SGM**: per poter continuare il test in modo pulito e
+ripetibile, servirebbe un modo per **azzerare/svuotare la tabella
+`connect_roles` su questa macchina di test** (o un comando/flag dedicato al
+test, se preferite non farlo manualmente sul DB) così si può rifare
+`bootstrap_sala` con PIN concordati e annotati qui prima di digitarli (es.
+tecnico=`111111` già confermato valido, supremo=un valore che scriviamo
+QUI nel changelog prima di usarlo, per non riperderlo). Ditelo se preferite
+un approccio diverso (es. un comando `reset_sala` dedicato, gated dietro il
+PIN tecnico, invece di toccare il DB a mano).
+
 ---
 
 ## 1. GATT
