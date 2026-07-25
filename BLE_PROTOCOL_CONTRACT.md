@@ -35,6 +35,18 @@ validazione→risposta con reason corretto confermato funzionante end-to-end.
 il successo pieno (creazione sala+supremo), poi `login`/`list_roles`/
 `upsert_role`/`remove_role`.
 
+⚠️ **Blocco attuale (2026-07-25 notte)**: Hu Leo ha riprovato con PIN
+tecnico `111111` (che riteneva corretto) e ha ricevuto di nuovo
+`invalid_technician_pin`. Segnale preciso: la reason NON è
+`technician_pin_not_set_on_machine` (che vorrebbe dire "nessun PIN
+configurato"), quindi la macchina ha SICURAMENTE un PIN tecnico salvato in
+`MachineConfig.technician_pin_hash` — semplicemente non è `111111`. Lato
+app tutto verificato corretto (payload key/value esatti, nessuna
+trasformazione sospetta). **Richiesta al lato SGM**: verificare/riportare
+quale PIN tecnico è realmente salvato su questa macchina (o guidare Hu Leo
+a re-impostarlo a un valore noto tramite il wizard fisico sul touch), così
+si può ripetere il test con un valore sicuramente corretto.
+
 ---
 
 ## 1. GATT
