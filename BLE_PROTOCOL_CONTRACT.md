@@ -19,10 +19,21 @@ risolto.
 
 🔧 **Fase 1 — lato SGM implementato (2026-07-25 sera, SGM/Windows):** le 5
 azioni ruoli sono scritte contro la spec §9 e passano test unitari completi
-(bootstrap → login → list/upsert/remove → nuovo hello azzera l'auth), ma
-**non ancora testate su macchina reale con un iPhone**. `INFO.capabilities`
-su un build aggiornato ora include tutte e 5 le azioni oltre a `hello`.
-Prossimo passo: sessione di test congiunta contro hardware reale.
+(bootstrap → login → list/upsert/remove → nuovo hello azzera l'auth).
+`INFO.capabilities` su un build aggiornato ora include tutte e 5 le azioni
+oltre a `hello`.
+
+✅ **`bootstrap_sala` CONFERMATO end-to-end su hardware reale (2026-07-25
+notte)**: primo test su iPhone fisico — l'app ha letto `capabilities`
+aggiornate, mostrato correttamente lo schermo di bootstrap (gate su
+capabilities funziona), inviato la request `bootstrap_sala`, e ricevuto una
+reply reale e coerente: `ack=false, reason="invalid_technician_pin"` (PIN
+tecnico inserito nell'app non corrispondente a quello vero della macchina —
+errore di INPUT dell'utente, non di protocollo). Percorso richiesta→
+validazione→risposta con reason corretto confermato funzionante end-to-end.
+**Resta da fare**: un tentativo con il PIN tecnico CORRETTO per confermare
+il successo pieno (creazione sala+supremo), poi `login`/`list_roles`/
+`upsert_role`/`remove_role`.
 
 ---
 
