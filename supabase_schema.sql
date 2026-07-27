@@ -285,11 +285,64 @@ alter table kiosk_eventi add column if not exists created_at timestamptz default
 alter table kiosk_eventi disable row level security;
 grant all on kiosk_eventi to anon;
 
--- NOTE — tables still to reconcile column-by-column (the app offered to send
--- their expected columns; SGM writes only the ones below today):
---   kiosk_comandi (SGM updates stato), depositi_incasso_turno, chiusure_contabilita
---   / vne_chiusure_contabilita. Left out of this file until we merge both column
---   lists to avoid guessing types. Send us your columns and we finalize.
+-- ------------------------------------------------------------- kiosk_comandi
+-- Command queue app->Pi; the Pi (SGM) updates stato/preso_in_carico/completato/
+-- risposta. Columns from the app model.
+create table if not exists kiosk_comandi (id uuid primary key default gen_random_uuid());
+alter table kiosk_comandi add column if not exists kiosk_id uuid;
+alter table kiosk_comandi add column if not exists comando text;
+alter table kiosk_comandi add column if not exists stato text default 'pending';
+alter table kiosk_comandi add column if not exists creato_da text;
+alter table kiosk_comandi add column if not exists preso_in_carico_at timestamptz;
+alter table kiosk_comandi add column if not exists completato_at timestamptz;
+alter table kiosk_comandi add column if not exists risposta text;
+alter table kiosk_comandi add column if not exists motivo_fallimento text;
+alter table kiosk_comandi add column if not exists created_at timestamptz default now();
+alter table kiosk_comandi add column if not exists manual_confermato_da uuid;
+alter table kiosk_comandi add column if not exists manual_confermato_da_nome text;
+alter table kiosk_comandi add column if not exists manual_confermato_at timestamptz;
+alter table kiosk_comandi add column if not exists manual_confermato_note text;
+-- Drop the LEGACY CHECK constraints on comando/stato: the old ones reject 'ping'
+-- and use 'eseguito' instead of 'completato', breaking the app. Enums are enforced
+-- in app/SGM code, not a DB CHECK, so future commands/states never get blocked.
+do $$
+declare c record;
+begin
+  for c in select conname from pg_constraint
+           where conrelid = 'kiosk_comandi'::regclass and contype = 'c'
+  loop execute format('alter table kiosk_comandi drop constraint %I', c.conname); end loop;
+end $$;
+alter table kiosk_comandi disable row level security;
+grant all on kiosk_comandi to anon;
+
+-- --------------------------------------------------- depositi_incasso_turno (SGM)
+-- iPRO cash-in deposit per shift. SGM writes it; DDL aligned with the app model.
+create table if not exists depositi_incasso_turno (id uuid primary key default gen_random_uuid());
+alter table depositi_incasso_turno add column if not exists kiosk_id uuid;
+alter table depositi_incasso_turno add column if not exists operatore_id uuid;
+alter table depositi_incasso_turno add column if not exists operatore_nome text;
+alter table depositi_incasso_turno add column if not exists totale_cent integer;
+alter table depositi_incasso_turno add column if not exists breakdown jsonb default '{}'::jsonb;
+alter table depositi_incasso_turno add column if not exists source text default 'ipro';
+alter table depositi_incasso_turno add column if not exists stato text default 'completato';
+alter table depositi_incasso_turno add column if not exists note text;
+alter table depositi_incasso_turno add column if not exists created_at timestamptz default now();
+alter table depositi_incasso_turno add column if not exists completed_at timestamptz default now();
+-- totale_eur: generated column only when the table is freshly created (a generated
+-- column cannot be added with ADD COLUMN IF NOT EXISTS on an existing table cleanly);
+-- if you want it, add it once on the app side. We keep totale_cent as the source.
+alter table depositi_incasso_turno disable row level security;
+grant all on depositi_incasso_turno to anon;
+
+-- NOTE — deliberately NOT in this SGM schema:
+--   * chiusure_contabilita  = SALA accounting closure (P&L), written ONLY by the
+--     app (SGM only READS it for dashboard metrics). App-only -> NeomaticSchema.
+--   * vne_chiusure_contabilita: SGM's dashboard writes it, but it's derived/legacy;
+--     if it ever 42703s tell us and we'll add its columns.
+--   * APP-ONLY tables (SGM never writes) stay in the app's NeomaticSchema, applied
+--     AFTER this file: app_settings, app_feature_toggles, audit_log,
+--     fondo_cassa/_storia, payout_ticket_reservations, etc. The "sala" tables are
+--     being REMOVED by the app — not in any schema.
 --
 -- APP-ONLY tables (SGM never writes) stay in the app's NeomaticSchema, applied
 -- AFTER this file at factory setup: app_settings, app_feature_toggles, audit_log,
